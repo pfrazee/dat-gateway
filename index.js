@@ -1,88 +1,83 @@
-const path = require('path')
-const http = require('http')
+'use strict'
+
 const Dat = require('dat-node')
+const http = require('http')
 const hyperdriveHttp = require('hyperdrive-http')
-var ram = require('random-access-memory')
+const resolveDat = require('dat-link-resolve')
 
-// constants
-// =
+module.exports =
+class DatGateway {
+  constructor ({ dir, dat }) {
+    this.dir = dir
+    this.datOptions = Object.assign({}, dat || { temp: true })
+    this.dats = {}
 
-const DAT_REGEX = /^([0-9a-f]{64})/i
-const footer = 'Served via https://github.com/pfrazee/dat-gateway'
-
-// globals
-// =
-
-var app
-var dats = {}
-
-// main
-// =
-
-// create server app
-var server = http.createServer(getAsset)
-server.listen(80)
-console.log('Listening on port 80')
-
-function getAsset (req, res) {
-  // validate params
-  var urlParts = req.url.split('/')
-  var key = getDatKey(urlParts[1])
-  var path = urlParts.slice(2).join('/')
-  if (!key) {
-    res.writeHead(404)
-    return res.end('Invalid dat key. Must be provided /{dat-key}/{path...}')
+    const handler = this.handler()
+    this.server = http.createServer(handler)
   }
 
-  // fetch dat
-  getDat(key, (err, dat) => {
-    if (err) {
-      res.writeHead(500)
-      return res.end('' + err)
+  handler () {
+    return (req, res) => {
+      let urlParts = req.url.split('/')
+      let address = urlParts[1]
+      let path = urlParts.slice(2).join('/')
+      return this.resolveDat(address).then((key) => {
+        return this.getDat(key)
+      }).then((dat) => {
+        // handle it!!
+        req.url = `/${path}`
+        dat.onrequest(req, res)
+      }).catch((e) => {
+        if (e.message === 'DNS record not found') {
+          res.writeHead(404)
+          res.end('Not found')
+        } else {
+          res.writeHead(500)
+          res.end(JSON.stringify(e))
+        }
+      })
     }
-
-    req.url = '/' + path
-    dat.onrequest(req, res)
-  })
-}
-
-function getDatKey (key) {
-  return DAT_REGEX.test(key) ? key : false
-}
-
-function getDat (key, cb) {
-  if (Array.isArray(typeof dats[key])) {
-    // list of callbacks
-    dats[key].push(cb)
-    return
-  }
-  else if (dats[key]) {
-    return cb(null, dats[key])
   }
 
-  // create callback list
-  dats[key] = [cb]
+  listen (port) {
+    return new Promise((resolve, reject) => {
+      this.server.listen(port, (err) => {
+        if (err) return reject(err)
+        else return resolve()
+      })
+    })
+  }
 
-  // create the dat
-  Dat('./cache', {key, temp: true}, function (err, dat) {
-    if (dat) {
-      // Join Dat's p2p network to download the site
-      dat.joinNetwork()
+  getDat (key) {
+    // check local cache
+    if (key in this.dats) return Promise.resolve(this.dats[key])
+    // retrieve from the web
+    return new Promise((resolve, reject) => {
+      const opts = Object.assign({}, this.datOptions, { key })
+      Dat(this.dir, opts, (err, dat) => {
+        if (err) {
+          return reject(err)
+        } else {
+          this.dats[key] = dat
+          dat.joinNetwork()
+          dat.onrequest = hyperdriveHttp(dat.archive, { live: true, exposeHeaders: true })
+          dat.archive.metadata.update(() => {
+            resolve(dat)
+          })
+        }
+      })
+    })
+  }
 
-      // create http server
-      dat.onrequest = hyperdriveHttp(dat.archive, {live: false, exposeHeaders: true, footer})
-
-      // download metadata
-      dat.archive.metadata.update(done)
-    } else {
-      done(err)
-    }
-
-    function done (err) {
-      // run CBs
-      var cbs = dats[key]
-      dats[key] = dat
-      cbs.forEach(cb => cb(err, dat))
-    }
-  })
+  resolveDat (address) {
+    return new Promise((resolve, reject) => {
+      resolveDat(address, (err, key) => {
+        if (err) {
+          return reject(err)
+        } else {
+          return resolve(key)
+        }
+      })
+    })
+  }
 }
