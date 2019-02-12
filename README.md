@@ -5,7 +5,7 @@
 [![JavaScript Style Guide](https://img.shields.io/badge/code_style-standard-brightgreen.svg)](https://standardjs.com)
 [![Build Status](https://travis-ci.org/garbados/dat-gateway.svg?branch=master)](https://travis-ci.org/garbados/dat-gateway)
 
-*No longer maintained. Check out the https://github.com/garbados/dat-gateway fork instead.*
+**No longer maintained. Check out the https://github.com/garbados/dat-gateway fork instead.**
 
 A configurable in-memory [Dat](https://datproject.org/)-to-HTTP gateway, so you can visit Dat archives from your browser.
 
