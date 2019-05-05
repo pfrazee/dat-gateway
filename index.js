@@ -29,11 +29,16 @@ class DatGateway {
       maxAge
     })
     this.server = http.createServer((req, res) => {
+      res.setHeader("Access-Control-Allow-Origin", "*")
       log('%s %s', req.method, req.url)
       // TODO redirect /:key to /:key/
       let urlParts = req.url.split('/')
       let address = urlParts[1]
       let path = urlParts.slice(2).join('/')
+      if (!address) {
+        res.writeHead(200)
+        return res.end('dat-gateway')
+      }
       return this.resolveDat(address).then((key) => {
         return this.getDat(key)
       }).then((dat) => {
