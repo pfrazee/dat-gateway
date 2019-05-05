@@ -14,6 +14,8 @@ function log () {
   }
 }
 
+var map = {}
+
 module.exports =
 class DatGateway {
   constructor ({ dir, max, maxAge }) {
@@ -30,10 +32,21 @@ class DatGateway {
     })
     this.server = http.createServer((req, res) => {
       log('%s %s', req.method, req.url)
-      // TODO redirect /:key to /:key/
+      let subdomain = req.headers.host.split('.')[0]
       let urlParts = req.url.split('/')
-      let address = urlParts[1]
-      let path = urlParts.slice(2).join('/')
+      if (subdomain === 'dat') {
+        let requestedDat = urlParts[1]
+        let shortname = requestedDat.substr(0,5)
+        map[shortname] = requestedDat 
+        let protocol = (req.connection.encrypted) ? 'https' : 'http'
+        let redirectTo = `${protocol}://${req.headers.host.replace('dat', shortname)}`
+        res.writeHead(302, {
+           location: `${redirectTo}`
+        })
+        return res.end();
+      }
+      let address = map[subdomain]
+      let path = urlParts.slice(1).join('/')
       return this.resolveDat(address).then((key) => {
         return this.getDat(key)
       }).then((dat) => {
